@@ -1,218 +1,3 @@
-// import * as React from 'react';
-// import {
-//   View,
-//   Text,
-//   TextInput,
-//   TouchableOpacity,
-//   FlatList,
-//   ActivityIndicator,
-//   StyleSheet,
-// } from 'react-native';
-// import { useHeaderHeight } from '@react-navigation/elements';
-// import NetworkCheckOvelay from '@/components/WifiWarningBanner';
-
-// /* ───── Backend base ───── */
-// const RAW = (process.env.EXPO_PUBLIC_BACKEND_URL as string) || 'http://localhost:3000';
-// const BASE = RAW.replace(/\/+$/, '');
-
-// async function fetchLyrics(songName: string, linkIndex: number): Promise<string[]> {
-//   const u = `${BASE}/scraper/scrape-lyrics?songName=${encodeURIComponent(
-//     songName
-//   )}&linkIndex=${encodeURIComponent(String(linkIndex))}`;
-//   const r = await fetch(u);
-//   if (!r.ok) throw new Error(`Lyrics fetch failed: ${r.status}`);
-//   const j = (await r.json()) as any;
-//   return (j?.lyrics ?? []) as string[];
-// }
-
-// export default function LyricsScreen() {
-//   const headerH = useHeaderHeight(); // ← pushes content below back button/header
-
-//   const [query, setQuery] = React.useState('');
-//   const [submitted, setSubmitted] = React.useState<string | null>(null);
-//   const [sourceIdx, setSourceIdx] = React.useState(0); // 0..6
-//   const [lines, setLines] = React.useState<string[] | null>(null);
-//   const [loading, setLoading] = React.useState(false);
-//   const [error, setError] = React.useState<string | null>(null);
-
-//   const MAX_SOURCES = 7;
-
-//   const runSearch = React.useCallback(async (q: string, idx: number) => {
-//     if (!q.trim()) return;
-//     setLoading(true);
-//     setError(null);
-//     try {
-//       const fresh = await fetchLyrics(q.trim(), idx);
-//       setLines(fresh);
-//       setSubmitted(q.trim());
-//     } catch (e: any) {
-//       setLines(null);
-//       setError(e?.message || 'Failed to fetch lyrics.');
-//     } finally {
-//       setLoading(false);
-//     }
-//   }, []);
-
-//   const onSubmit = React.useCallback(() => {
-//     setSourceIdx(0);
-//     runSearch(query, 0);
-//   }, [query, runSearch]);
-
-//   const onChangeLyrics = React.useCallback(() => {
-//     if (!submitted) return;
-//     const next = (sourceIdx + 1) % MAX_SOURCES;
-//     setSourceIdx(next);
-//     runSearch(submitted, next);
-//   }, [submitted, sourceIdx, runSearch]);
-
-//   return (
-//     <View style={[styles.container, { paddingTop: headerH + 8 }]}>
-//       <NetworkCheckOvelay>
-//         <View style={styles.headerRow}>
-//           <Text style={styles.headerTitle}>Lyrics</Text>
-//           <TouchableOpacity
-//             onPress={onChangeLyrics}
-//             disabled={!submitted || loading}
-//             style={[styles.swapBtn, (!submitted || loading) && { opacity: 0.6 }]}>
-//             <Text style={styles.swapText}>Change lyrics</Text>
-//           </TouchableOpacity>
-//         </View>
-
-//         <View style={styles.searchRow}>
-//           <View style={styles.searchBox}>
-//             <TextInput
-//               placeholder="Search song or artist…"
-//               placeholderTextColor="#8b95a7"
-//               value={query}
-//               onChangeText={setQuery}
-//               autoCapitalize="none"
-//               autoCorrect={false}
-//               returnKeyType="search"
-//               onSubmitEditing={onSubmit}
-//               style={styles.input}
-//             />
-//           </View>
-//           <TouchableOpacity
-//             onPress={onSubmit}
-//             disabled={loading || !query.trim()}
-//             style={[styles.searchBtn, (loading || !query.trim()) && { opacity: 0.6 }]}>
-//             <Text style={styles.searchText}>Search</Text>
-//           </TouchableOpacity>
-//         </View>
-
-//         {submitted ? (
-//           <View style={styles.metaRow}>
-//             <Text style={styles.metaLeft} numberOfLines={1}>
-//               Results for "{submitted}"
-//             </Text>
-//             <Text style={styles.metaRight}>
-//               Source {sourceIdx + 1}/{MAX_SOURCES}
-//             </Text>
-//           </View>
-//         ) : null}
-
-//         <View style={styles.resultCard}>
-//           {loading ? (
-//             <View style={styles.center}>
-//               <ActivityIndicator color="#93c5fd" />
-//             </View>
-//           ) : error ? (
-//             <View style={styles.center}>
-//               <Text style={styles.errorText}>{error}</Text>
-//             </View>
-//           ) : lines && lines.length ? (
-//             <FlatList
-//               style={{ flex: 1 }}
-//               data={lines}
-//               keyExtractor={(_, i) => `line-${i}`}
-//               contentContainerStyle={{ padding: 12 }}
-//               renderItem={({ item }) => <Text style={styles.line}>{item || ' '}</Text>}
-//             />
-//           ) : (
-//             <View style={styles.center}>
-//               <Text style={{ color: '#94a3b8' }}>
-//                 {submitted ? 'No lyrics found.' : 'Search for a song to begin.'}
-//               </Text>
-//             </View>
-//           )}
-//         </View>
-//       </NetworkCheckOvelay>
-//     </View>
-//   );
-// }
-
-// const styles = StyleSheet.create({
-//   container: {
-//     flex: 1,
-//     backgroundColor: '#0f1115',
-//     paddingHorizontal: 14,
-//   },
-//   headerRow: {
-//     flexDirection: 'row',
-//     justifyContent: 'space-between',
-//     alignItems: 'center',
-//     marginVertical: 25,
-//   },
-//   headerTitle: { color: '#e5e7eb', fontSize: 22, fontWeight: '800' },
-
-//   searchRow: { flexDirection: 'row', gap: 8, marginBottom: 8 },
-//   searchBox: {
-//     flex: 1,
-//     backgroundColor: '#171a21',
-//     borderRadius: 12,
-//     borderWidth: 1,
-//     borderColor: '#2a2f3a',
-//   },
-//   input: {
-//     paddingHorizontal: 12,
-//     paddingVertical: 10,
-//     color: '#e8eaed',
-//     fontSize: 16,
-//   },
-//   searchBtn: {
-//     paddingHorizontal: 14,
-//     borderRadius: 10,
-//     backgroundColor: '#111827',
-//     borderWidth: 1,
-//     borderColor: '#334155',
-//     justifyContent: 'center',
-//     alignItems: 'center',
-//   },
-//   searchText: { color: '#93c5fd', fontWeight: '700' },
-
-//   metaRow: {
-//     flexDirection: 'row',
-//     justifyContent: 'space-between',
-//     marginBottom: 8,
-//     paddingHorizontal: 2,
-//   },
-//   metaLeft: { color: '#8ea0b5', flex: 1, marginRight: 6 },
-//   metaRight: { color: '#8ea0b5' },
-
-//   resultCard: {
-//     flex: 1,
-//     borderRadius: 14,
-//     borderWidth: 1,
-//     borderColor: '#273144',
-//     backgroundColor: '#0f141c',
-//     overflow: 'hidden',
-//   },
-//   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-//   line: { color: '#cbd5e1', fontSize: 16, lineHeight: 24, marginBottom: 2 },
-
-//   swapBtn: {
-//     borderRadius: 10,
-//     paddingHorizontal: 10,
-//     paddingVertical: 8,
-//     backgroundColor: '#111827',
-//     borderWidth: 1,
-//     borderColor: '#334155',
-//   },
-//   swapText: { color: '#93c5fd', fontWeight: '700' },
-
-//   errorText: { color: '#ef4444' },
-// });
-
 import * as React from 'react';
 import {
   View,
@@ -225,8 +10,10 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
 import NetworkCheckOvelay from '@/components/WifiWarningBanner';
+import { tokens, pressOpacity, timing } from '@/lib/tokens';
 
 /* ───── Backend base ───── */
 const RAW = (process.env.EXPO_PUBLIC_BACKEND_URL as string) || 'http://localhost:3000';
@@ -243,6 +30,7 @@ async function fetchLyrics(songName: string, linkIndex: number): Promise<string[
 }
 
 export default function LyricsScreen() {
+  const insets = useSafeAreaInsets();
   const [query, setQuery] = React.useState('');
   const [submitted, setSubmitted] = React.useState<string | null>(null);
   const [sourceIdx, setSourceIdx] = React.useState(0);
@@ -286,7 +74,7 @@ export default function LyricsScreen() {
         <View style={{ flex: 0 }} />
       </NetworkCheckOvelay>
 
-      <SafeAreaView style={styles.container} edges={['bottom']}>
+      <View style={styles.container}>
         <KeyboardAvoidingView
           style={styles.keyboardView}
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
@@ -296,7 +84,8 @@ export default function LyricsScreen() {
               <TouchableOpacity
                 onPress={onChangeLyrics}
                 disabled={!submitted || loading}
-                style={[styles.swapBtn, (!submitted || loading) && styles.btnDisabled]}>
+                style={[styles.swapBtn, (!submitted || loading) && styles.btnDisabled]}
+                activeOpacity={pressOpacity.default}>
                 <Text style={styles.swapText}>Change lyrics</Text>
               </TouchableOpacity>
             </View>
@@ -305,7 +94,7 @@ export default function LyricsScreen() {
               <View style={styles.searchBox}>
                 <TextInput
                   placeholder="Search song or artist…"
-                  placeholderTextColor="#8b95a7"
+                  placeholderTextColor={tokens.colors.text.muted}
                   value={query}
                   onChangeText={setQuery}
                   autoCapitalize="none"
@@ -318,183 +107,195 @@ export default function LyricsScreen() {
               <TouchableOpacity
                 onPress={onSubmit}
                 disabled={loading || !query.trim()}
-                style={[styles.searchBtn, (loading || !query.trim()) && styles.btnDisabled]}>
+                style={[styles.searchBtn, (loading || !query.trim()) && styles.btnDisabled]}
+                activeOpacity={pressOpacity.default}>
                 <Text style={styles.searchText}>Search</Text>
               </TouchableOpacity>
             </View>
 
             {submitted ? (
-              <View style={styles.metaRow}>
+              <Animated.View entering={FadeIn.duration(timing.fast)} style={styles.metaRow}>
                 <Text style={styles.metaLeft} numberOfLines={1}>
                   Results for "{submitted}"
                 </Text>
                 <Text style={styles.metaRight}>
                   Source {sourceIdx + 1}/{MAX_SOURCES}
                 </Text>
-              </View>
+              </Animated.View>
             ) : null}
 
             <View style={styles.resultCard}>
               {loading ? (
-                <View style={styles.center}>
-                  <ActivityIndicator color="#93c5fd" size="large" />
+                <Animated.View entering={FadeIn.duration(timing.fast)} style={styles.center}>
+                  <ActivityIndicator color={tokens.colors.accent.secondary} size="large" />
                   <Text style={styles.loadingText}>Fetching lyrics...</Text>
-                </View>
+                </Animated.View>
               ) : error ? (
-                <View style={styles.center}>
+                <Animated.View entering={FadeInDown.duration(timing.normal)} style={styles.center}>
                   <Text style={styles.errorText}>{error}</Text>
-                </View>
+                </Animated.View>
               ) : lines && lines.length ? (
                 <FlatList
                   data={lines}
                   keyExtractor={(_, i) => `line-${i}`}
                   contentContainerStyle={styles.lyricsContent}
-                  renderItem={({ item }) => <Text style={styles.line}>{item || ' '}</Text>}
+                  renderItem={({ item, index }) => (
+                    <Animated.Text
+                      entering={FadeInDown.delay(index * 20).duration(timing.fast)}
+                      style={styles.line}>
+                      {item || ' '}
+                    </Animated.Text>
+                  )}
                   showsVerticalScrollIndicator={true}
                   indicatorStyle="white"
                 />
               ) : (
-                <View style={styles.center}>
+                <Animated.View entering={FadeIn.duration(timing.normal)} style={styles.center}>
                   <Text style={styles.placeholderText}>
                     {submitted ? 'No lyrics found.' : 'Search for a song to begin.'}
                   </Text>
-                </View>
+                </Animated.View>
               )}
             </View>
           </View>
         </KeyboardAvoidingView>
-      </SafeAreaView>
+      </View>
     </>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
-    flex: 1,
-    backgroundColor: '#0f1115',
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: tokens.colors.bg.primary,
+    paddingTop: 60,
   },
   keyboardView: {
     flex: 1,
   },
   content: {
     flex: 1,
-    paddingHorizontal: 16,
-    paddingTop: 16,
+    paddingHorizontal: tokens.spacing.lg,
+    paddingTop: tokens.spacing.md,
   },
   headerRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 20,
+    marginBottom: tokens.spacing.lg,
   },
   headerTitle: {
-    color: '#e5e7eb',
-    fontSize: 26,
-    fontWeight: '800',
-    letterSpacing: -0.5,
+    color: tokens.colors.text.primary,
+    fontSize: tokens.fontSize.xxl,
+    fontWeight: tokens.fontWeight.bold,
   },
   searchRow: {
     flexDirection: 'row',
-    gap: 10,
-    marginBottom: 12,
+    gap: tokens.spacing.md,
+    marginBottom: tokens.spacing.md,
   },
   searchBox: {
     flex: 1,
-    backgroundColor: '#171a21',
-    borderRadius: 12,
+    backgroundColor: tokens.colors.bg.secondary,
+    borderRadius: tokens.radius.lg,
     borderWidth: 1,
-    borderColor: '#2a2f3a',
+    borderColor: tokens.colors.border.default,
   },
   input: {
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    color: '#e8eaed',
-    fontSize: 16,
+    paddingHorizontal: tokens.spacing.lg,
+    paddingVertical: tokens.spacing.md,
+    color: tokens.colors.text.primary,
+    fontSize: tokens.fontSize.lg,
   },
   searchBtn: {
-    paddingHorizontal: 18,
-    borderRadius: 12,
-    backgroundColor: '#1e40af',
+    paddingHorizontal: tokens.spacing.xl,
+    borderRadius: tokens.radius.lg,
+    backgroundColor: tokens.colors.accent.buttonAlt,
     justifyContent: 'center',
     alignItems: 'center',
     minWidth: 90,
   },
   searchText: {
     color: '#fff',
-    fontWeight: '700',
-    fontSize: 15,
+    fontWeight: tokens.fontWeight.bold,
+    fontSize: tokens.fontSize.md,
   },
   metaRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: 10,
-    paddingHorizontal: 4,
+    marginBottom: tokens.spacing.md,
+    paddingHorizontal: tokens.spacing.xs,
   },
   metaLeft: {
-    color: '#8ea0b5',
+    color: tokens.colors.text.tertiary,
     flex: 1,
-    marginRight: 8,
-    fontSize: 13,
+    marginRight: tokens.spacing.sm,
+    fontSize: tokens.fontSize.base,
   },
   metaRight: {
-    color: '#8ea0b5',
-    fontSize: 13,
+    color: tokens.colors.text.tertiary,
+    fontSize: tokens.fontSize.base,
   },
   resultCard: {
     flex: 1,
-    borderRadius: 16,
+    borderRadius: tokens.radius.xxl,
     borderWidth: 1.5,
-    borderColor: '#273144',
-    backgroundColor: '#0f141c',
+    borderColor: tokens.colors.border.strong,
+    backgroundColor: tokens.colors.bg.tertiary,
     overflow: 'hidden',
-    marginBottom: 8,
+    marginBottom: tokens.spacing.sm,
+    ...tokens.shadow.sm,
   },
   center: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 24,
+    padding: tokens.spacing.xxl,
   },
   lyricsContent: {
-    padding: 20,
-    paddingBottom: 40,
+    padding: tokens.spacing.xl,
+    paddingBottom: tokens.spacing.xxxl + tokens.spacing.sm,
   },
   line: {
-    color: '#cbd5e1',
-    fontSize: 16,
+    color: tokens.colors.text.tertiary,
+    fontSize: tokens.fontSize.lg,
     lineHeight: 28,
     marginBottom: 6,
   },
   swapBtn: {
-    borderRadius: 10,
-    paddingHorizontal: 14,
+    borderRadius: tokens.radius.md,
+    paddingHorizontal: tokens.spacing.lg,
     paddingVertical: 9,
-    backgroundColor: '#1e293b',
+    backgroundColor: tokens.colors.bg.secondary,
     borderWidth: 1,
-    borderColor: '#334155',
+    borderColor: tokens.colors.border.focus,
   },
   swapText: {
-    color: '#93c5fd',
-    fontWeight: '700',
-    fontSize: 13,
+    color: tokens.colors.accent.secondary,
+    fontWeight: tokens.fontWeight.bold,
+    fontSize: tokens.fontSize.base,
   },
   btnDisabled: {
     opacity: 0.5,
   },
   errorText: {
-    color: '#ef4444',
-    fontSize: 15,
+    color: tokens.colors.error,
+    fontSize: tokens.fontSize.md,
     textAlign: 'center',
     lineHeight: 22,
   },
   loadingText: {
-    color: '#93c5fd',
-    marginTop: 12,
-    fontSize: 14,
+    color: tokens.colors.accent.secondary,
+    marginTop: tokens.spacing.md,
+    fontSize: tokens.fontSize.base,
   },
   placeholderText: {
-    color: '#94a3b8',
-    fontSize: 15,
+    color: tokens.colors.text.muted,
+    fontSize: tokens.fontSize.md,
     textAlign: 'center',
   },
 });

@@ -8,6 +8,7 @@ import Slider from '@react-native-community/slider';
 import * as Progress from 'react-native-progress';
 import { Guitar } from 'lucide-react-native';
 import Toast from 'react-native-toast-message';
+import Animated, { FadeIn, SlideInDown, SlideOutDown } from 'react-native-reanimated';
 
 import {
   useMusic,
@@ -17,10 +18,8 @@ import {
   startSeeking,
   updateSeekPosition,
   finishSeeking,
-  cancelSeeking,
   Variant,
   hasStems,
-  playSongById,
   playVariantForCurrent,
   uploadForSeparation,
   pollStemsState,
@@ -32,6 +31,8 @@ import {
 } from '@/lib/music-player-all-controls';
 
 import LyricsPanel from './LyricsPanel';
+import { tokens, pressOpacity, timing } from '@/lib/tokens';
+import { triggerHaptic } from '@/lib/haptics';
 
 const fmt = (sec: number) => {
   const s = Math.max(0, Math.floor(sec || 0));
@@ -54,25 +55,22 @@ export default function MainPlayer() {
   const songs = useMusic((s) => s.songs);
   const song = useMemo(() => songs.find((x) => x.id === currentId) || null, [songs, currentId]);
 
-  // Get safe area insets to handle iPhone notch and home indicator
   const insets = useSafeAreaInsets();
 
-  // Professional seeking state (local UI state)
   const [isSeekingLocal, setIsSeekingLocal] = useState(false);
   const [localSeekValue, setLocalSeekValue] = useState(0);
 
-  // Combined seeking state
   const isSeeking = isSeekingState || isSeekingLocal;
   const displayPosition = isSeeking ? localSeekValue : position;
 
-  // Professional play/pause with loading state
   const handleTogglePlayPause = useCallback(async () => {
-    if (isLoading) return; // Prevent rapid clicking
+    if (isLoading) return;
+    await triggerHaptic('medium');
     await togglePlayPause();
   }, [isLoading]);
 
-  // Professional seeking handlers
   const handleSlidingStart = useCallback((value: number) => {
+    triggerHaptic('light');
     setIsSeekingLocal(true);
     setLocalSeekValue(value);
     startSeeking(value);
@@ -89,39 +87,46 @@ export default function MainPlayer() {
     await finishSeeking();
   }, []);
 
-  // Professional skip controls with loading protection
   const handleSkipBack = useCallback(async () => {
     if (isLoading) return;
+    await triggerHaptic('light');
     await playPrev();
   }, [isLoading]);
 
   const handleSkipForward = useCallback(async () => {
     if (isLoading) return;
+    await triggerHaptic('light');
     await playNext();
   }, [isLoading]);
 
-  // Professional seek forward/backward
   const handleSeekBack = useCallback(async () => {
     if (isLoading) return;
+    await triggerHaptic('light');
     const newTime = Math.max(0, position - 15);
     await seekTo(newTime);
   }, [isLoading, position]);
 
   const handleSeekForward = useCallback(async () => {
     if (isLoading) return;
+    await triggerHaptic('light');
     const newTime = Math.min(duration, position + 15);
     await seekTo(newTime);
   }, [isLoading, position, duration]);
 
-  // Professional variant switching with loading protection
   const handleVariantSwitch = useCallback(
     async (v: Variant) => {
-      if (isLoading) return; // Prevent switching during loading
+      if (isLoading) return;
       if (v !== 'full' && !hasStems(song)) return;
+      await triggerHaptic('light');
       await playVariantForCurrent(v);
     },
     [isLoading, song]
   );
+
+  const handleClose = useCallback(async () => {
+    await triggerHaptic('light');
+    setShowFull(false);
+  }, [setShowFull]);
 
   const stemsReady = hasStems(song);
   const [phase, setPhase] = useState<
@@ -130,7 +135,6 @@ export default function MainPlayer() {
   const [pct, setPct] = useState(0);
   const inFlight = useRef<null | 'upload' | 'download'>(null);
 
-  // If stems exist locally, collapse UI back to idle (unless a flow is running)
   useEffect(() => {
     if (!stemsReady) return;
     if (inFlight.current) return;
@@ -140,7 +144,6 @@ export default function MainPlayer() {
     }
   }, [stemsReady, phase]);
 
-  // Bootstrap from server state on mount or when song changes
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -158,16 +161,13 @@ export default function MainPlayer() {
           setPhase('idle');
           setPct(0);
         }
-      } catch {
-        // keep idle if we can't read state
-      }
+      } catch {}
     })();
     return () => {
       cancelled = true;
     };
   }, [song?.id, stemsReady]);
 
-  // Poll processing progress
   useEffect(() => {
     if (!song?.id || phase !== 'processing') return;
     let mounted = true;
@@ -257,23 +257,29 @@ export default function MainPlayer() {
   if (!showFull || !song) return null;
 
   return (
-    <View style={[styles.wrap, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
-      {/* header with proper safe area */}
-      <View style={[styles.header, { marginTop: 8 }]}>
-        <TouchableOpacity onPress={() => setShowFull(false)} style={styles.hBtn}>
-          <Ionicons name="chevron-down" size={18} color="#cbd5e1" />
+    <Animated.View
+      entering={SlideInDown.duration(timing.slow)}
+      exiting={SlideOutDown.duration(timing.normal)}
+      style={[styles.wrap, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
+      {/* header */}
+      <View style={[styles.header, { marginTop: tokens.spacing.sm }]}>
+        <TouchableOpacity
+          onPress={handleClose}
+          style={styles.hBtn}
+          activeOpacity={pressOpacity.default}>
+          <Ionicons name="chevron-down" size={18} color={tokens.colors.text.tertiary} />
         </TouchableOpacity>
         <Text style={styles.hTitle}>Now Playing</Text>
         <View style={[styles.hBtn, { opacity: 0 }]} />
       </View>
 
       {/* lyrics fills available space */}
-      <View style={{ flex: 1, paddingHorizontal: 16 }}>
+      <View style={{ flex: 1, paddingHorizontal: tokens.spacing.lg }}>
         <LyricsPanel songId={song.id} />
       </View>
 
       {/* title/artist */}
-      <View style={{ paddingHorizontal: 20, marginTop: 10 }}>
+      <View style={{ paddingHorizontal: tokens.spacing.xl, marginTop: tokens.spacing.md }}>
         <Text style={styles.title} numberOfLines={1}>
           {song.title}
         </Text>
@@ -283,7 +289,7 @@ export default function MainPlayer() {
       </View>
 
       {/* slider */}
-      <View style={{ paddingHorizontal: 20, marginTop: 10 }}>
+      <View style={{ paddingHorizontal: tokens.spacing.xl, marginTop: tokens.spacing.md }}>
         <Slider
           style={{ width: '100%', height: 36 }}
           minimumValue={0}
@@ -292,9 +298,9 @@ export default function MainPlayer() {
           onSlidingStart={handleSlidingStart}
           onValueChange={handleValueChange}
           onSlidingComplete={handleSlidingComplete}
-          minimumTrackTintColor="#60A5FA"
-          maximumTrackTintColor="#1E293B"
-          thumbTintColor="#60A5FA"
+          minimumTrackTintColor={tokens.colors.accent.primary}
+          maximumTrackTintColor={tokens.colors.bg.secondary}
+          thumbTintColor={tokens.colors.accent.primary}
         />
         <View style={styles.timeRow}>
           <Text style={styles.time}>{fmt(displayPosition)}</Text>
@@ -305,7 +311,7 @@ export default function MainPlayer() {
       {/* variants / extraction */}
       <View style={styles.variantArea}>
         {stemsReady ? (
-          <View style={styles.variantRow}>
+          <Animated.View entering={FadeIn.duration(timing.normal)} style={styles.variantRow}>
             <VariantBtn
               label="Music"
               icon="musical-notes"
@@ -324,22 +330,23 @@ export default function MainPlayer() {
               active={activeVariant === 'instrumental'}
               onPress={() => handleVariantSwitch('instrumental')}
             />
-          </View>
+          </Animated.View>
         ) : (
           <View style={styles.extractCard}>
             {phase === 'idle' && (
               <TouchableOpacity
                 onPress={startExtraction}
                 style={styles.primaryBtn}
-                disabled={!!inFlight.current}>
+                disabled={!!inFlight.current}
+                activeOpacity={pressOpacity.default}>
                 <Text style={styles.primaryText}>Start extraction</Text>
               </TouchableOpacity>
             )}
             {phase === 'uploading' && (
               <View style={styles.progressRow}>
                 <Progress.Bar
-                  color="#60A5FA"
-                  unfilledColor="#1E293B"
+                  color={tokens.colors.accent.primary}
+                  unfilledColor={tokens.colors.bg.secondary}
                   borderWidth={0}
                   width={220}
                   progress={pct / 100}
@@ -350,8 +357,8 @@ export default function MainPlayer() {
             {phase === 'processing' && (
               <View style={styles.progressRow}>
                 <Progress.Bar
-                  color="#60A5FA"
-                  unfilledColor="#1E293B"
+                  color={tokens.colors.accent.primary}
+                  unfilledColor={tokens.colors.bg.secondary}
                   borderWidth={0}
                   width={220}
                   progress={pct > 0 ? pct / 100 : 0}
@@ -364,15 +371,16 @@ export default function MainPlayer() {
               <TouchableOpacity
                 onPress={saveStems}
                 style={styles.primaryBtn}
-                disabled={!!inFlight.current}>
+                disabled={!!inFlight.current}
+                activeOpacity={pressOpacity.default}>
                 <Text style={styles.primaryText}>Download stems</Text>
               </TouchableOpacity>
             )}
             {phase === 'downloading' && (
               <View style={styles.progressRow}>
                 <Progress.Bar
-                  color="#60A5FA"
-                  unfilledColor="#1E293B"
+                  color={tokens.colors.accent.primary}
+                  unfilledColor={tokens.colors.bg.secondary}
                   borderWidth={0}
                   width={220}
                   indeterminate
@@ -387,24 +395,28 @@ export default function MainPlayer() {
       {/* transport controls */}
       <View style={styles.controlsRow}>
         <Circle onPress={handleSkipBack}>
-          <Ionicons name="play-skip-back" size={26} color="#e2e8f0" />
+          <Ionicons name="play-skip-back" size={26} color={tokens.colors.text.primary} />
         </Circle>
         <Circle onPress={handleSeekBack}>
-          <Ionicons name="play-back" size={22} color="#e2e8f0" />
+          <Ionicons name="play-back" size={22} color={tokens.colors.text.primary} />
           <Text style={styles.small}>15</Text>
         </Circle>
-        <Circle big onPress={handleTogglePlayPause} bg="#93c5fd">
-          <Ionicons name={isPlaying ? 'pause' : 'play'} size={30} color="#0b0f17" />
+        <Circle big onPress={handleTogglePlayPause} bg={tokens.colors.accent.secondary}>
+          <Ionicons
+            name={isPlaying ? 'pause' : 'play'}
+            size={30}
+            color={tokens.colors.text.inverse}
+          />
         </Circle>
         <Circle onPress={handleSeekForward}>
-          <Ionicons name="play-forward" size={22} color="#e2e8f0" />
+          <Ionicons name="play-forward" size={22} color={tokens.colors.text.primary} />
           <Text style={styles.small}>15</Text>
         </Circle>
         <Circle onPress={handleSkipForward}>
-          <Ionicons name="play-skip-forward" size={26} color="#e2e8f0" />
+          <Ionicons name="play-skip-forward" size={26} color={tokens.colors.text.primary} />
         </Circle>
       </View>
-    </View>
+    </Animated.View>
   );
 }
 
@@ -420,17 +432,20 @@ function VariantBtn({
   active: boolean;
   onPress: () => void;
 }) {
-  const tint = active ? '#0b0f17' : '#e2e8f0';
+  const tint = active ? tokens.colors.text.inverse : tokens.colors.text.primary;
   return (
     <TouchableOpacity
       onPress={onPress}
-      style={[styles.variantBtn, active && styles.variantBtnActive]}>
+      style={[styles.variantBtn, active && styles.variantBtnActive]}
+      activeOpacity={pressOpacity.default}>
       {icon === 'guitar' ? (
         <Guitar size={18} color={tint} />
       ) : (
         <Ionicons name={icon as IonName} size={18} color={tint} />
       )}
-      <Text style={[styles.variantLabel, active && { color: '#0b0f17' }]}>{label}</Text>
+      <Text style={[styles.variantLabel, active && { color: tokens.colors.text.inverse }]}>
+        {label}
+      </Text>
     </TouchableOpacity>
   );
 }
@@ -453,7 +468,8 @@ function Circle({
         styles.ctrl,
         big && { width: 80, height: 80 },
         bg ? { backgroundColor: bg, borderColor: bg } : null,
-      ]}>
+      ]}
+      activeOpacity={pressOpacity.default}>
       {children}
     </TouchableOpacity>
   );
@@ -462,11 +478,11 @@ function Circle({
 const styles = StyleSheet.create({
   wrap: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: '#0b0f17',
+    backgroundColor: tokens.colors.bg.primary,
   },
   header: {
     height: 56,
-    paddingHorizontal: 12,
+    paddingHorizontal: tokens.spacing.md,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -474,79 +490,123 @@ const styles = StyleSheet.create({
   hBtn: {
     width: 36,
     height: 36,
-    borderRadius: 10,
+    borderRadius: tokens.radius.md,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#10141c',
+    backgroundColor: tokens.colors.bg.elevated,
     borderWidth: 1,
-    borderColor: '#273144',
+    borderColor: tokens.colors.border.default,
   },
-  hTitle: { color: '#cbd5e1', fontWeight: '700' },
-  title: { color: '#e5e7eb', fontWeight: '800', fontSize: 20 },
-  sub: { color: '#9aa0a6', marginTop: 4 },
+  hTitle: {
+    color: tokens.colors.text.secondary,
+    fontWeight: tokens.fontWeight.semibold,
+    fontSize: tokens.fontSize.base,
+  },
+  title: {
+    color: tokens.colors.text.primary,
+    fontWeight: tokens.fontWeight.extraBold,
+    fontSize: tokens.fontSize.xxl,
+    letterSpacing: -0.5,
+  },
+  sub: {
+    color: tokens.colors.text.secondary,
+    marginTop: tokens.spacing.xs,
+    fontSize: tokens.fontSize.lg,
+  },
   timeRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     marginTop: 6,
   },
-  time: { color: '#8ea0b5' },
-  variantArea: { paddingHorizontal: 16, marginTop: 10 },
-  variantRow: { flexDirection: 'row', gap: 10, justifyContent: 'center' },
+  time: {
+    color: tokens.colors.text.tertiary,
+    fontSize: tokens.fontSize.sm,
+    fontVariant: ['tabular-nums'],
+  },
+  variantArea: {
+    paddingHorizontal: tokens.spacing.lg,
+    marginTop: tokens.spacing.lg,
+  },
+  variantRow: {
+    flexDirection: 'row',
+    gap: tokens.spacing.md,
+    justifyContent: 'center',
+  },
   variantBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    paddingHorizontal: 14,
+    gap: tokens.spacing.sm,
+    paddingHorizontal: tokens.spacing.lg,
     height: 40,
-    borderRadius: 999,
-    backgroundColor: '#10141c',
+    borderRadius: tokens.radius.full,
+    backgroundColor: tokens.colors.bg.elevated,
     borderWidth: 1,
-    borderColor: '#273144',
+    borderColor: tokens.colors.border.default,
   },
-  variantBtnActive: { backgroundColor: '#93c5fd', borderColor: '#93c5fd' },
-  variantLabel: { color: '#e2e8f0', fontWeight: '600', fontSize: 13 },
+  variantBtnActive: {
+    backgroundColor: tokens.colors.accent.primary,
+    borderColor: tokens.colors.accent.primary,
+  },
+  variantLabel: {
+    color: tokens.colors.text.primary,
+    fontWeight: tokens.fontWeight.semibold,
+    fontSize: tokens.fontSize.base,
+  },
   extractCard: {
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 14,
-    borderRadius: 14,
+    paddingVertical: tokens.spacing.lg,
+    borderRadius: tokens.radius.xl,
     borderWidth: 1,
-    borderColor: '#273144',
-    backgroundColor: '#0f141c',
+    borderColor: tokens.colors.border.default,
+    backgroundColor: tokens.colors.bg.elevated,
   },
   primaryBtn: {
-    backgroundColor: '#111827',
+    backgroundColor: tokens.colors.accent.primary,
     borderWidth: 1,
-    borderColor: '#334155',
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: 10,
+    borderColor: tokens.colors.accent.primary,
+    paddingHorizontal: tokens.spacing.xl,
+    paddingVertical: tokens.spacing.md,
+    borderRadius: tokens.radius.lg,
   },
-  primaryText: { color: '#93c5fd', fontWeight: '700' },
-  progressRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  pct: { color: '#93c5fd', fontWeight: '700' },
+  primaryText: {
+    color: '#FFFFFF',
+    fontWeight: tokens.fontWeight.bold,
+    fontSize: tokens.fontSize.base,
+  },
+  progressRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: tokens.spacing.md,
+  },
+  pct: {
+    color: tokens.colors.text.secondary,
+    fontWeight: tokens.fontWeight.medium,
+    fontSize: tokens.fontSize.base,
+  },
   controlsRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    padding: 20,
-    paddingBottom: 24,
+    padding: tokens.spacing.xl,
+    paddingBottom: tokens.spacing.xxl,
   },
   ctrl: {
     width: 64,
     height: 64,
-    borderRadius: 999,
+    borderRadius: tokens.radius.full,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#10141c',
+    backgroundColor: tokens.colors.bg.elevated,
     borderWidth: 1,
-    borderColor: '#273144',
+    borderColor: tokens.colors.border.default,
   },
   small: {
     position: 'absolute',
     bottom: 8,
     right: 10,
-    color: '#cbd5e1',
-    fontSize: 11,
+    color: tokens.colors.text.tertiary,
+    fontSize: tokens.fontSize.xs,
+    fontWeight: tokens.fontWeight.semibold,
   },
 });

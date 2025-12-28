@@ -29,7 +29,6 @@ function MusicLayoutContent() {
     })();
   }, []);
 
-  // Expo's default tab bar height is ~56. Add a little spacing.
   const TAB_BAR_HEIGHT = 56;
   const MINI_SAFE_BOTTOM = insets.bottom + TAB_BAR_HEIGHT + 8;
 
@@ -39,14 +38,14 @@ function MusicLayoutContent() {
         screenOptions={{
           headerShown: false,
           tabBarStyle: {
-            backgroundColor: '#0f1115',
-            borderTopColor: '#151a23',
+            backgroundColor: '#2A2D3A',
+            borderTopColor: '#3D4354',
+            borderTopWidth: 1,
           },
-          tabBarActiveTintColor: '#60a5fa',
-          tabBarInactiveTintColor: '#9aa0a6',
-          // Remove the static paddingTop since we're handling safe areas properly now
+          tabBarActiveTintColor: '#D4A574',
+          tabBarInactiveTintColor: '#6B7280',
           sceneStyle: {
-            paddingTop: insets.top + 8, // Dynamic safe area top + small margin
+            backgroundColor: '#1C1E26',
           },
         }}>
         {/* Songs tab */}

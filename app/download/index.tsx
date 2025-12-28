@@ -14,9 +14,11 @@ import {
   Alert,
   ScrollView,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
 import { ensureInit, saveBase64AsSong, useMusic } from '@/lib/music-player-all-controls';
 import NetworkCheckOvelay from '@/components/WifiWarningBanner';
+import { tokens, pressOpacity, timing } from '@/lib/tokens';
 
 const RAW_BASE = (process.env.EXPO_PUBLIC_BACKEND_URL as string) || 'http://localhost:3000';
 const BASE = RAW_BASE.replace(/\/+$/, '');
@@ -36,6 +38,7 @@ type DownloadResponse = {
 };
 
 export default function MusicDownloader() {
+  const insets = useSafeAreaInsets();
   const { isInternetReachable } = useNetworkState();
   const [url, setUrl] = React.useState('');
   const [isValid, setIsValid] = React.useState(false);
@@ -50,8 +53,8 @@ export default function MusicDownloader() {
 
   const inputRef = React.useRef<TextInput>(null);
   const controllerRef = React.useRef<AbortController | null>(null);
-  const pollRef = React.useRef<NodeJS.Timeout | null>(null);
-  const timeoutRef = React.useRef<NodeJS.Timeout | null>(null);
+  const pollRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
+  const timeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const refreshSongs = useMusic((s) => s.refresh);
 
@@ -181,20 +184,25 @@ export default function MusicDownloader() {
   const buttonDisabled = !isValid || isBusy;
 
   return (
-    <SafeAreaView style={styles.screen} edges={['top', 'bottom']}>
-      <NetworkCheckOvelay isConnected={isInternetReachable ?? true} />
+    <View style={styles.screen}>
+      <NetworkCheckOvelay>
+        <View style={{ flex: 0 }} />
+      </NetworkCheckOvelay>
 
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}>
+        keyboardVerticalOffset={0}>
         <ScrollView
           contentContainerStyle={styles.scrollContent}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}>
-          <View style={styles.card}>
-            <Text style={styles.h1}>Offline Music – Downloader</Text>
-            <Text style={styles.sub}>Paste a YouTube video or Shorts link.</Text>
+          <Animated.View entering={FadeInDown.duration(timing.slow)} style={styles.card}>
+            <View style={styles.header}>
+              <Text style={styles.h1}>Music Downloader</Text>
+              <Text style={styles.badge}>YouTube to MP3</Text>
+            </View>
+            <Text style={styles.sub}>Paste a YouTube video or Shorts link below.</Text>
 
             <View style={styles.inputRow}>
               <TextInput
@@ -203,7 +211,7 @@ export default function MusicDownloader() {
                 value={url}
                 onChangeText={setUrl}
                 placeholder="https://youtube.com/watch?v=..."
-                placeholderTextColor="#6b7280"
+                placeholderTextColor={tokens.colors.text.muted}
                 autoCapitalize="none"
                 autoCorrect={false}
                 keyboardType="url"
@@ -214,10 +222,15 @@ export default function MusicDownloader() {
               <TouchableOpacity
                 style={[styles.btn, buttonDisabled ? styles.btnDisabled : styles.btnPrimary]}
                 onPress={startDownload}
-                disabled={buttonDisabled}>
+                disabled={buttonDisabled}
+                activeOpacity={pressOpacity.default}>
                 {isBusy ? (
                   <View style={styles.btnInnerRow}>
-                    <ActivityIndicator size="small" color="#fff" style={{ marginRight: 8 }} />
+                    <ActivityIndicator
+                      size="small"
+                      color="#fff"
+                      style={{ marginRight: tokens.spacing.sm }}
+                    />
                     <Text style={styles.btnText}>Working…</Text>
                   </View>
                 ) : (
@@ -226,7 +239,10 @@ export default function MusicDownloader() {
               </TouchableOpacity>
 
               {phase === 'inflight' && (
-                <TouchableOpacity style={[styles.btn, styles.btnGhost]} onPress={cancelDownload}>
+                <TouchableOpacity
+                  style={[styles.btn, styles.btnGhost]}
+                  onPress={cancelDownload}
+                  activeOpacity={pressOpacity.default}>
                   <Text style={styles.btnGhostText}>Cancel</Text>
                 </TouchableOpacity>
               )}
@@ -239,7 +255,7 @@ export default function MusicDownloader() {
               </View>
 
               <View style={styles.progressBarBg}>
-                <View style={[styles.progressBarFg, { width: `${progress * 100}%` }]} />
+                <Animated.View style={[styles.progressBarFg, { width: `${progress * 100}%` }]} />
               </View>
 
               <View style={styles.stepsRow}>
@@ -251,34 +267,36 @@ export default function MusicDownloader() {
             </View>
 
             {phase === 'done' && (
-              <View style={styles.resultCard}>
+              <Animated.View entering={FadeIn.duration(timing.normal)} style={styles.resultCard}>
                 <Text style={styles.resultTitle}>{meta?.title || 'Unknown title'}</Text>
                 <Text style={styles.resultSub}>{meta?.author || 'Unknown author'}</Text>
                 {meta?.savedId ? (
                   <Text style={styles.resultNote}>Saved ID: {meta.savedId}</Text>
                 ) : null}
-              </View>
+              </Animated.View>
             )}
 
             {phase === 'error' && (
-              <View style={styles.errorBox}>
+              <Animated.View entering={FadeInDown.duration(timing.normal)} style={styles.errorBox}>
                 <Text style={styles.errorText}>{status}</Text>
-              </View>
+              </Animated.View>
             )}
-          </View>
+          </Animated.View>
         </ScrollView>
       </KeyboardAvoidingView>
-    </SafeAreaView>
+    </View>
   );
 }
 
 function StepChip({ label, active }: { label: string; active: boolean }) {
   return (
-    <View style={[styles.chip, active ? styles.chipActive : styles.chipIdle]}>
+    <Animated.View
+      entering={FadeIn.duration(timing.fast)}
+      style={[styles.chip, active ? styles.chipActive : styles.chipIdle]}>
       <Text style={[styles.chipText, active ? styles.chipTextActive : styles.chipTextIdle]}>
         {label}
       </Text>
-    </View>
+    </Animated.View>
   );
 }
 
@@ -301,98 +319,118 @@ async function parseJsonSafe<T>(resp: Response): Promise<T> {
 
 const styles = StyleSheet.create({
   screen: {
-    flex: 1,
-    backgroundColor: '#0f1115',
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: tokens.colors.bg.primary,
+    paddingTop: 60,
   },
   scrollContent: {
     flexGrow: 1,
     justifyContent: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 24,
+    paddingHorizontal: tokens.spacing.lg,
+    paddingVertical: tokens.spacing.xxl,
   },
   card: {
-    backgroundColor: '#171a21',
-    borderRadius: 16,
-    padding: 20,
-    gap: 14,
-    shadowColor: '#000',
-    shadowOpacity: 0.25,
-    shadowRadius: 20,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 8,
+    backgroundColor: tokens.colors.bg.secondary,
+    borderRadius: tokens.radius.xxl,
+    padding: tokens.spacing.xl,
+    gap: tokens.spacing.lg,
+    borderWidth: 1,
+    borderColor: tokens.colors.border.default,
+    ...tokens.shadow.lg,
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: tokens.spacing.md,
   },
   h1: {
-    color: '#e8eaed',
-    fontSize: 22,
-    fontWeight: '700',
+    color: tokens.colors.text.primary,
+    fontSize: tokens.fontSize.xxl,
+    fontWeight: tokens.fontWeight.semibold,
+  },
+  badge: {
+    color: tokens.colors.text.muted,
+    fontSize: tokens.fontSize.xs,
+    fontWeight: tokens.fontWeight.medium,
+    backgroundColor: tokens.colors.bg.tertiary,
+    paddingHorizontal: tokens.spacing.md,
+    paddingVertical: 4,
+    borderRadius: tokens.radius.full,
+    borderWidth: 1,
+    borderColor: tokens.colors.border.default,
+    overflow: 'hidden',
   },
   sub: {
-    color: '#9aa0a6',
-    fontSize: 14,
+    color: tokens.colors.text.secondary,
+    fontSize: tokens.fontSize.base,
   },
   inputRow: {
-    borderRadius: 12,
-    backgroundColor: '#0f1115',
+    borderRadius: tokens.radius.lg,
+    backgroundColor: tokens.colors.bg.input,
     borderWidth: 1,
-    borderColor: '#2a2f3a',
-    paddingHorizontal: 12,
-    paddingVertical: 12,
+    borderColor: tokens.colors.border.default,
+    paddingHorizontal: tokens.spacing.md,
+    paddingVertical: tokens.spacing.md,
   },
   input: {
-    color: '#e8eaed',
-    fontSize: 15,
+    color: tokens.colors.text.primary,
+    fontSize: tokens.fontSize.md,
   },
   actions: {
     flexDirection: 'row',
-    gap: 12,
+    gap: tokens.spacing.md,
     alignItems: 'center',
     justifyContent: 'center',
   },
   btn: {
-    borderRadius: 12,
-    paddingHorizontal: 20,
-    paddingVertical: 14,
+    borderRadius: tokens.radius.lg,
+    paddingHorizontal: tokens.spacing.xl,
+    paddingVertical: tokens.spacing.lg,
     alignItems: 'center',
     justifyContent: 'center',
     minWidth: 130,
   },
   btnPrimary: {
-    backgroundColor: '#4f46e5',
+    backgroundColor: tokens.colors.accent.button,
   },
   btnDisabled: {
-    backgroundColor: '#2a2f3a',
+    backgroundColor: tokens.colors.disabled,
   },
   btnGhost: {
     borderWidth: 1,
-    borderColor: '#39414f',
+    borderColor: tokens.colors.border.focus,
   },
   btnText: {
     color: '#fff',
-    fontWeight: '600',
-    fontSize: 15,
+    fontWeight: tokens.fontWeight.medium,
+    fontSize: tokens.fontSize.md,
   },
   btnGhostText: {
-    color: '#aab2c0',
-    fontWeight: '600',
-    fontSize: 15,
+    color: tokens.colors.text.tertiary,
+    fontWeight: tokens.fontWeight.medium,
+    fontSize: tokens.fontSize.md,
   },
   btnInnerRow: {
     flexDirection: 'row',
     alignItems: 'center',
   },
   progressWrap: {
-    marginTop: 4,
-    gap: 8,
+    marginTop: tokens.spacing.xs,
+    gap: tokens.spacing.sm,
   },
   progressBarBg: {
     height: 10,
-    backgroundColor: '#1e2430',
-    borderRadius: 8,
+    backgroundColor: tokens.colors.bg.tertiary,
+    borderRadius: tokens.radius.sm,
     overflow: 'hidden',
   },
   progressBarFg: {
     height: 10,
-    backgroundColor: '#22c55e',
+    backgroundColor: tokens.colors.success,
   },
   progressLabels: {
     flexDirection: 'row',
@@ -400,75 +438,75 @@ const styles = StyleSheet.create({
     alignItems: 'baseline',
   },
   statusText: {
-    color: '#cbd5e1',
-    fontSize: 14,
+    color: tokens.colors.text.tertiary,
+    fontSize: tokens.fontSize.base,
   },
   percentText: {
-    color: '#94a3b8',
-    fontSize: 14,
+    color: tokens.colors.text.muted,
+    fontSize: tokens.fontSize.base,
     fontVariant: ['tabular-nums'],
   },
   stepsRow: {
     flexDirection: 'row',
-    gap: 8,
+    gap: tokens.spacing.sm,
     flexWrap: 'wrap',
     marginTop: 2,
   },
   chip: {
-    paddingHorizontal: 10,
+    paddingHorizontal: tokens.spacing.md,
     paddingVertical: 6,
-    borderRadius: 999,
+    borderRadius: tokens.radius.full,
   },
   chipActive: {
-    backgroundColor: '#1f2937',
+    backgroundColor: tokens.colors.bg.secondary,
     borderWidth: 1,
-    borderColor: '#22c55e55',
+    borderColor: tokens.colors.success,
   },
   chipIdle: {
-    backgroundColor: '#141922',
+    backgroundColor: tokens.colors.bg.tertiary,
     borderWidth: 1,
-    borderColor: '#293041',
+    borderColor: tokens.colors.border.default,
   },
   chipText: {
-    fontSize: 12,
-    fontWeight: '600',
+    fontSize: tokens.fontSize.sm,
+    fontWeight: tokens.fontWeight.medium,
   },
   chipTextActive: {
     color: '#c7f9cc',
   },
   chipTextIdle: {
-    color: '#8d99ae',
+    color: tokens.colors.text.tertiary,
   },
   resultCard: {
-    marginTop: 8,
-    backgroundColor: '#0f141c',
-    borderRadius: 12,
-    padding: 12,
+    marginTop: tokens.spacing.sm,
+    backgroundColor: tokens.colors.bg.tertiary,
+    borderRadius: tokens.radius.lg,
+    padding: tokens.spacing.md,
     borderWidth: 1,
-    borderColor: '#2a2f3a',
-    gap: 4,
+    borderColor: tokens.colors.border.default,
+    gap: tokens.spacing.xs,
   },
   resultTitle: {
-    color: '#e5e7eb',
-    fontWeight: '700',
-    fontSize: 16,
+    color: tokens.colors.text.primary,
+    fontWeight: tokens.fontWeight.bold,
+    fontSize: tokens.fontSize.lg,
   },
   resultSub: {
-    color: '#a6b0c0',
-    fontSize: 14,
+    color: tokens.colors.text.tertiary,
+    fontSize: tokens.fontSize.base,
   },
   resultNote: {
-    color: '#8d99ae',
-    fontSize: 12,
+    color: tokens.colors.text.tertiary,
+    fontSize: tokens.fontSize.sm,
   },
   errorBox: {
-    marginTop: 8,
-    padding: 12,
-    borderRadius: 10,
+    marginTop: tokens.spacing.sm,
+    padding: tokens.spacing.md,
+    borderRadius: tokens.radius.md,
     backgroundColor: '#3b1d1d',
   },
   errorText: {
     color: '#fecaca',
-    fontSize: 14,
+    fontSize: tokens.fontSize.base,
   },
 });

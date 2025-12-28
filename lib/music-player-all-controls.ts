@@ -655,27 +655,28 @@ export async function seekTo(seconds: number) {
   }
 }
 
-// Professional next/previous with loading states
+// Professional next/previous with LOOPING support
 export async function playNext() {
   const state = usePlayer.getState();
   const { playlist, currentIndex, isLoading } = state;
 
-  if (isLoading) return; // Prevent rapid clicking
+  if (isLoading || playlist.length === 0) return; // Prevent rapid clicking
 
-  if (currentIndex < playlist.length - 1) {
-    const nextSong = playlist[currentIndex + 1];
-    state.setCurrentIndex(currentIndex + 1);
-    state.setIsLoading(true);
+  // Calculate next index with wrapping (loop back to first song)
+  const nextIndex = currentIndex >= playlist.length - 1 ? 0 : currentIndex + 1;
+  const nextSong = playlist[nextIndex];
 
-    try {
-      await playSongById(nextSong.id);
-    } catch (error) {
-      console.error('Error playing next song:', error);
-      // Revert index on error
-      state.setCurrentIndex(currentIndex);
-    } finally {
-      state.setIsLoading(false);
-    }
+  state.setCurrentIndex(nextIndex);
+  state.setIsLoading(true);
+
+  try {
+    await playSongById(nextSong.id);
+  } catch (error) {
+    console.error('Error playing next song:', error);
+    // Revert index on error
+    state.setCurrentIndex(currentIndex);
+  } finally {
+    state.setIsLoading(false);
   }
 }
 
@@ -683,7 +684,7 @@ export async function playPrev() {
   const state = usePlayer.getState();
   const { playlist, currentIndex, position, isLoading } = state;
 
-  if (isLoading) return; // Prevent rapid clicking
+  if (isLoading || playlist.length === 0) return; // Prevent rapid clicking
 
   // Standard behavior: if >3 seconds into song, restart current song
   if (position > 3) {
@@ -691,23 +692,21 @@ export async function playPrev() {
     return;
   }
 
-  if (currentIndex > 0) {
-    const prevSong = playlist[currentIndex - 1];
-    state.setCurrentIndex(currentIndex - 1);
-    state.setIsLoading(true);
+  // Calculate previous index with wrapping (loop to last song)
+  const prevIndex = currentIndex <= 0 ? playlist.length - 1 : currentIndex - 1;
+  const prevSong = playlist[prevIndex];
 
-    try {
-      await playSongById(prevSong.id);
-    } catch (error) {
-      console.error('Error playing previous song:', error);
-      // Revert index on error
-      state.setCurrentIndex(currentIndex);
-    } finally {
-      state.setIsLoading(false);
-    }
-  } else {
-    // Already at first song - restart current song
-    await seekTo(0);
+  state.setCurrentIndex(prevIndex);
+  state.setIsLoading(true);
+
+  try {
+    await playSongById(prevSong.id);
+  } catch (error) {
+    console.error('Error playing previous song:', error);
+    // Revert index on error
+    state.setCurrentIndex(currentIndex);
+  } finally {
+    state.setIsLoading(false);
   }
 }
 

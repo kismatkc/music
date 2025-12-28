@@ -14,6 +14,7 @@ import {
   StyleProp,
   TextStyle,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 
 import { MoreHorizontal } from 'lucide-react-native';
@@ -25,6 +26,8 @@ import Animated, {
   withDelay,
   withRepeat,
   withTiming,
+  FadeIn,
+  FadeInDown,
 } from 'react-native-reanimated';
 import {
   playSongById,
@@ -32,6 +35,10 @@ import {
   updateSongMeta,
   useMusic,
 } from '@/lib/music-player-all-controls';
+import { tokens, pressOpacity, timing } from '@/lib/tokens';
+import { triggerHaptic } from '@/lib/haptics';
+import { isFeatureEnabled } from '@/lib/featureFlags';
+import { SongsSkeleton } from '@/components/SkeletonLoader';
 
 type Row = {
   id: string;
@@ -44,7 +51,7 @@ type Row = {
 const defaultArtwork = require('../assets/unknown_artist.png');
 
 const formatDuration = (sec?: number) => {
-  if (sec == null) return '—:—';
+  if (sec == null || sec === 0) return '0:00';
   const s = Math.max(0, Math.floor(sec));
   const m = Math.floor(s / 60);
   const r = s % 60;
@@ -52,6 +59,7 @@ const formatDuration = (sec?: number) => {
 };
 
 export default function SongsScreen() {
+  const insets = useSafeAreaInsets();
   const songs = useMusic((s) => s.songs);
   const refresh = useMusic((s) => s.refresh);
 
@@ -104,6 +112,7 @@ export default function SongsScreen() {
   }, [songs, query]);
 
   function openEdit(row: Row) {
+    triggerHaptic('light');
     setEditId(row.id);
     setEditTitle(row.title ?? '');
     setEditArtist(row.artist ?? '');
@@ -126,14 +135,18 @@ export default function SongsScreen() {
         artist: editArtist.trim() || undefined,
         album: editAlbum.trim() || undefined,
       });
+      await triggerHaptic('success');
       setEditOpen(false);
     } catch (e: any) {
+      await triggerHaptic('error');
       Alert.alert('Error', e?.message || 'Failed to update song.');
     } finally {
       setSaving(false);
     }
   }
+
   function onDelete(row: Row) {
+    triggerHaptic('warning');
     Alert.alert('Delete song?', `"${row.title}" will be removed from your device.`, [
       { text: 'Cancel', style: 'cancel' },
       {
@@ -142,7 +155,9 @@ export default function SongsScreen() {
         onPress: async () => {
           try {
             await removeSong(row.id);
+            await triggerHaptic('success');
           } catch (e: any) {
+            await triggerHaptic('error');
             Alert.alert('Error', e?.message || 'Failed to delete song.');
           }
         },
@@ -150,12 +165,22 @@ export default function SongsScreen() {
     ]);
   }
 
+  // FlatList optimization - calculate item layout for better performance
+  const getItemLayout = React.useCallback(
+    (_: any, index: number) => ({
+      length: 68 + tokens.spacing.sm, // row height + separator
+      offset: (68 + tokens.spacing.sm) * index,
+      index,
+    }),
+    []
+  );
+
   return (
-    <View style={styles.screen}>
+    <View style={[styles.screen, { paddingTop: insets.top + 8 }]}>
       <View style={styles.searchWrap}>
         <TextInput
           placeholder="Search songs, artists, albums…"
-          placeholderTextColor="#9aa0a6"
+          placeholderTextColor={tokens.colors.text.muted}
           style={styles.searchInput}
           value={query}
           onChangeText={setQuery}
@@ -166,11 +191,13 @@ export default function SongsScreen() {
       </View>
 
       {!rows.length && !isRefreshing ? (
-        <View style={styles.emptyWrap}>
+        <Animated.View entering={FadeIn.duration(timing.normal)} style={styles.emptyWrap}>
           <Image source={defaultArtwork} style={styles.emptyArt} />
           <Text style={styles.emptyTitle}>No songs yet</Text>
           <Text style={styles.emptySub}>Use the Download tab to save music.</Text>
-        </View>
+        </Animated.View>
+      ) : isRefreshing && rows.length === 0 && isFeatureEnabled('ENABLE_SKELETON_LOADER') ? (
+        <SongsSkeleton />
       ) : (
         <FlatList
           data={rows}
@@ -186,31 +213,38 @@ export default function SongsScreen() {
                   setIsRefreshing(false);
                 }
               }}
-              tintColor="#cbd5e1"
-              titleColor="#cbd5e1"
+              tintColor={tokens.colors.text.tertiary}
+              titleColor={tokens.colors.text.tertiary}
             />
           }
-          renderItem={({ item }) => (
+          renderItem={({ item, index }) => (
             <SongRow
               row={item}
+              index={index}
               onEdit={() => openEdit(item)}
               onDelete={() => onDelete(item)}
               onPlay={() => playSongById(item.id)}
             />
           )}
           ItemSeparatorComponent={() => <View style={styles.sep} />}
-          contentContainerStyle={{ paddingBottom: 24, paddingTop: 4 }}
+          contentContainerStyle={{ paddingBottom: tokens.spacing.xxl }}
+          // Performance optimizations (feature-flagged)
+          getItemLayout={isFeatureEnabled('ENABLE_LIST_OPTIMIZATION') ? getItemLayout : undefined}
+          windowSize={isFeatureEnabled('ENABLE_LIST_OPTIMIZATION') ? 10 : 21}
+          maxToRenderPerBatch={isFeatureEnabled('ENABLE_LIST_OPTIMIZATION') ? 10 : 10}
+          updateCellsBatchingPeriod={isFeatureEnabled('ENABLE_LIST_OPTIMIZATION') ? 50 : 50}
+          removeClippedSubviews={isFeatureEnabled('ENABLE_LIST_OPTIMIZATION')}
         />
       )}
 
-      {/* Edit Modal (unchanged) */}
+      {/* Edit Modal */}
       <Modal
         visible={editOpen}
         transparent
         animationType="fade"
         onRequestClose={() => setEditOpen(false)}>
         <View style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
+          <Animated.View entering={FadeInDown.duration(timing.normal)} style={styles.modalCard}>
             <Text style={styles.modalTitle}>Edit song</Text>
             <View style={styles.field}>
               <Text style={styles.label}>Title</Text>
@@ -218,7 +252,7 @@ export default function SongsScreen() {
                 value={editTitle}
                 onChangeText={setEditTitle}
                 placeholder="Title"
-                placeholderTextColor="#9aa0a6"
+                placeholderTextColor={tokens.colors.text.secondary}
                 style={styles.input}
                 autoCorrect={false}
               />
@@ -229,7 +263,7 @@ export default function SongsScreen() {
                 value={editArtist}
                 onChangeText={setEditArtist}
                 placeholder="Artist"
-                placeholderTextColor="#9aa0a6"
+                placeholderTextColor={tokens.colors.text.secondary}
                 style={styles.input}
                 autoCorrect={false}
               />
@@ -240,7 +274,7 @@ export default function SongsScreen() {
                 value={editAlbum}
                 onChangeText={setEditAlbum}
                 placeholder="Album"
-                placeholderTextColor="#9aa0a6"
+                placeholderTextColor={tokens.colors.text.secondary}
                 style={styles.input}
                 autoCorrect={false}
               />
@@ -249,17 +283,19 @@ export default function SongsScreen() {
               <TouchableOpacity
                 onPress={() => setEditOpen(false)}
                 style={[styles.btn, styles.btnGhost]}
-                disabled={saving}>
+                disabled={saving}
+                activeOpacity={pressOpacity.default}>
                 <Text style={styles.btnGhostText}>Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={onSaveEdit}
                 style={[styles.btn, saving ? styles.btnDisabled : styles.btnPrimary]}
-                disabled={saving}>
+                disabled={saving}
+                activeOpacity={pressOpacity.default}>
                 <Text style={styles.btnText}>{saving ? 'Saving…' : 'Save'}</Text>
               </TouchableOpacity>
             </View>
-          </View>
+          </Animated.View>
         </View>
       </Modal>
     </View>
@@ -268,18 +304,26 @@ export default function SongsScreen() {
 
 function SongRow({
   row,
+  index,
   onEdit,
   onDelete,
   onPlay,
 }: {
   row: Row;
+  index: number;
   onEdit: () => void;
   onDelete: () => void;
   onPlay: () => void;
 }) {
   const artSource = row.artwork ? { uri: row.artwork } : defaultArtwork;
 
+  const handlePlay = React.useCallback(async () => {
+    await triggerHaptic('light');
+    onPlay();
+  }, [onPlay]);
+
   const openMenu = () => {
+    triggerHaptic('light');
     ActionSheetIOS.showActionSheetWithOptions(
       {
         options: ['Cancel', 'Edit', 'Delete'],
@@ -295,28 +339,31 @@ function SongRow({
   };
 
   return (
-    <TouchableOpacity activeOpacity={0.8} onPress={onPlay} style={styles.row}>
-      <Image source={artSource} style={styles.art} />
-      <View style={styles.meta}>
-        <Marquee text={row.title} style={styles.title} />
-        <Text numberOfLines={1} style={styles.sub}>
-          {row.artist || 'Unknown artist'}
-        </Text>
-      </View>
-      <View style={styles.rightCol}>
-        <Text style={styles.duration}>{formatDuration(row.duration)}</Text>
-        <TouchableOpacity
-          style={styles.moreBtn}
-          onPress={openMenu}
-          accessibilityLabel="More actions">
-          <MoreHorizontal size={18} color="#cbd5e1" />
-        </TouchableOpacity>
-      </View>
-    </TouchableOpacity>
+    <Animated.View entering={FadeInDown.delay(index * 30).duration(timing.normal)}>
+      <TouchableOpacity activeOpacity={pressOpacity.light} onPress={handlePlay} style={styles.row}>
+        <Image source={artSource} style={styles.art} />
+        <View style={styles.meta}>
+          <Marquee text={row.title} style={styles.title} />
+          <Text numberOfLines={1} style={styles.sub}>
+            {row.artist || 'Unknown artist'}
+          </Text>
+        </View>
+        <View style={styles.rightCol}>
+          <Text style={styles.duration}>{formatDuration(row.duration)}</Text>
+          <TouchableOpacity
+            style={styles.moreBtn}
+            onPress={openMenu}
+            activeOpacity={pressOpacity.default}
+            accessibilityLabel="More actions">
+            <MoreHorizontal size={18} color={tokens.colors.text.tertiary} />
+          </TouchableOpacity>
+        </View>
+      </TouchableOpacity>
+    </Animated.View>
   );
 }
 
-/* Reanimated marquee (string-length based – no layout flakiness in lists) */
+/* Reanimated marquee */
 function Marquee({
   text,
   style,
@@ -356,7 +403,11 @@ function Marquee({
     <View style={styles.titleClip}>
       <Animated.Text
         numberOfLines={1}
-        style={[style, shouldAnimate ? { width: 9999, paddingLeft: 16 } : null, anim]}>
+        style={[
+          style,
+          shouldAnimate ? { width: 9999, paddingLeft: tokens.spacing.lg } : null,
+          anim,
+        ]}>
         {text}
       </Animated.Text>
     </View>
@@ -365,107 +416,165 @@ function Marquee({
 
 const styles = StyleSheet.create({
   screen: {
-    flex: 1,
-    backgroundColor: '#0f1115',
-    paddingHorizontal: 16,
-    paddingTop: 16,
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: tokens.colors.bg.primary,
+    paddingTop: 60,
+    paddingHorizontal: tokens.spacing.lg,
   },
-  // add a little more top margin so a native back arrow never overlaps the search field
   searchWrap: {
-    backgroundColor: '#171a21',
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+    backgroundColor: tokens.colors.bg.secondary,
+    borderRadius: tokens.radius.lg,
+    paddingHorizontal: tokens.spacing.md,
+    paddingVertical: tokens.spacing.md,
     borderWidth: 1,
-    borderColor: '#2a2f3a',
-    marginBottom: 12,
-    marginTop: 16, // was 8/12 — bumped to 16
+    borderColor: tokens.colors.border.default,
+    marginBottom: tokens.spacing.lg,
   },
-  searchInput: { color: '#e8eaed', fontSize: 15 },
-  sep: { height: 8 },
+  searchInput: {
+    color: tokens.colors.text.primary,
+    fontSize: tokens.fontSize.md,
+  },
+  sep: { height: tokens.spacing.sm },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#171a21',
-    borderRadius: 12,
-    padding: 10,
+    backgroundColor: tokens.colors.bg.secondary,
+    borderRadius: tokens.radius.lg,
+    padding: tokens.spacing.md,
     borderWidth: 1,
-    borderColor: '#1f2530',
+    borderColor: tokens.colors.border.subtle,
   },
-  art: { width: 52, height: 52, borderRadius: 8, backgroundColor: '#11151c' },
-  meta: { flex: 1, marginLeft: 12, minWidth: 0 },
+  art: {
+    width: 52,
+    height: 52,
+    borderRadius: tokens.radius.sm,
+    backgroundColor: tokens.colors.bg.tertiary,
+  },
+  meta: {
+    flex: 1,
+    marginLeft: tokens.spacing.md,
+    minWidth: 0,
+  },
   titleClip: { overflow: 'hidden' },
-  title: { color: '#e5e7eb', fontWeight: '700', fontSize: 15 },
-  sub: { color: '#9aa0a6', marginTop: 2 },
+  title: {
+    color: tokens.colors.text.primary,
+    fontWeight: tokens.fontWeight.bold,
+    fontSize: tokens.fontSize.md,
+  },
+  sub: {
+    color: tokens.colors.text.secondary,
+    marginTop: 2,
+    fontSize: tokens.fontSize.base,
+  },
   rightCol: {
-    marginLeft: 8,
+    marginLeft: tokens.spacing.sm,
     alignItems: 'flex-end',
     justifyContent: 'space-between',
     height: 44,
   },
-  duration: { color: '#94a3b8', fontVariant: ['tabular-nums'], fontSize: 12 },
+  duration: {
+    color: tokens.colors.text.muted,
+    fontVariant: ['tabular-nums'],
+    fontSize: tokens.fontSize.sm,
+  },
   moreBtn: {
-    paddingHorizontal: 8,
+    paddingHorizontal: tokens.spacing.sm,
     paddingVertical: 6,
-    borderRadius: 8,
-    backgroundColor: '#10141c',
+    borderRadius: tokens.radius.sm,
+    backgroundColor: tokens.colors.bg.tertiary,
     borderWidth: 1,
-    borderColor: '#273144',
+    borderColor: tokens.colors.border.strong,
   },
 
-  // modal styles unchanged...
+  // modal styles
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.45)',
+    backgroundColor: tokens.colors.overlay,
     justifyContent: 'center',
-    padding: 16,
+    padding: tokens.spacing.lg,
   },
   modalCard: {
-    backgroundColor: '#171a21',
-    borderRadius: 16,
-    padding: 16,
-    gap: 12,
+    backgroundColor: tokens.colors.bg.secondary,
+    borderRadius: tokens.radius.xxl,
+    padding: tokens.spacing.lg,
+    gap: tokens.spacing.md,
     borderWidth: 1,
-    borderColor: '#2a2f3a',
+    borderColor: tokens.colors.border.default,
+    ...tokens.shadow.lg,
   },
-  modalTitle: { color: '#e5e7eb', fontSize: 18, fontWeight: '700' },
+  modalTitle: {
+    color: tokens.colors.text.primary,
+    fontSize: tokens.fontSize.xl,
+    fontWeight: tokens.fontWeight.bold,
+  },
   field: { gap: 6 },
-  label: { color: '#aab2c0', fontSize: 12 },
+  label: {
+    color: tokens.colors.text.tertiary,
+    fontSize: tokens.fontSize.sm,
+  },
   input: {
-    color: '#e8eaed',
-    backgroundColor: '#0f1115',
+    color: tokens.colors.text.primary,
+    backgroundColor: tokens.colors.bg.input,
     borderWidth: 1,
-    borderColor: '#2a2f3a',
-    borderRadius: 10,
-    paddingHorizontal: 10,
-    paddingVertical: 10,
+    borderColor: tokens.colors.border.default,
+    borderRadius: tokens.radius.md,
+    paddingHorizontal: tokens.spacing.md,
+    paddingVertical: tokens.spacing.md,
+    fontSize: tokens.fontSize.md,
   },
   modalActions: {
     flexDirection: 'row',
     justifyContent: 'flex-end',
-    gap: 10,
-    marginTop: 4,
+    gap: tokens.spacing.md,
+    marginTop: tokens.spacing.xs,
   },
   btn: {
-    borderRadius: 10,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
+    borderRadius: tokens.radius.md,
+    paddingHorizontal: tokens.spacing.lg,
+    paddingVertical: tokens.spacing.md,
     alignItems: 'center',
     justifyContent: 'center',
     minWidth: 90,
   },
-  btnPrimary: { backgroundColor: '#4f46e5' },
-  btnDisabled: { backgroundColor: '#2a2f3a' },
-  btnGhost: { borderWidth: 1, borderColor: '#39414f' },
-  btnText: { color: '#fff', fontWeight: '600' },
-  btnGhostText: { color: '#aab2c0', fontWeight: '600' },
+  btnPrimary: { backgroundColor: tokens.colors.accent.button },
+  btnDisabled: { backgroundColor: tokens.colors.disabled },
+  btnGhost: {
+    borderWidth: 1,
+    borderColor: tokens.colors.border.focus,
+  },
+  btnText: {
+    color: '#fff',
+    fontWeight: tokens.fontWeight.medium,
+    fontSize: tokens.fontSize.md,
+  },
+  btnGhostText: {
+    color: tokens.colors.text.tertiary,
+    fontWeight: tokens.fontWeight.medium,
+    fontSize: tokens.fontSize.md,
+  },
   emptyWrap: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    gap: 8,
+    gap: tokens.spacing.sm,
   },
-  emptyArt: { width: 80, height: 80, borderRadius: 16, opacity: 0.6 },
-  emptyTitle: { color: '#e5e7eb', fontWeight: '700', fontSize: 16 },
-  emptySub: { color: '#9aa0a6' },
+  emptyArt: {
+    width: 80,
+    height: 80,
+    borderRadius: tokens.radius.xxl,
+    opacity: 0.6,
+  },
+  emptyTitle: {
+    color: tokens.colors.text.primary,
+    fontWeight: tokens.fontWeight.bold,
+    fontSize: tokens.fontSize.lg,
+  },
+  emptySub: {
+    color: tokens.colors.text.secondary,
+    fontSize: tokens.fontSize.base,
+  },
 });

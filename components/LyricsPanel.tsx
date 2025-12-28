@@ -14,8 +14,10 @@ import {
   Modal,
 } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
+import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
 import Toast from 'react-native-toast-message';
 import { useMusic, updateSongLyrics, useProgress } from '@/lib/music-player-all-controls';
+import { tokens, pressOpacity, timing } from '@/lib/tokens';
 
 /** Backend base */
 const RAW = (process.env.EXPO_PUBLIC_BACKEND_URL as string) || 'http://localhost:3000';
@@ -44,27 +46,22 @@ export default function LyricsPanel({ songId }: { songId: string }) {
   const [loading, setLoading] = React.useState(false);
   const [idx, setIdx] = React.useState(0);
 
-  // Lead % (user types 0..100; e.g. "4" => 4%)
   const [aheadPctStr, setAheadPctStr] = React.useState('');
   const aheadPctNum = Number.parseFloat(aheadPctStr);
   const aheadPctValid = Number.isFinite(aheadPctNum) && aheadPctNum >= 0 && aheadPctNum <= 100;
   const aheadFrac = aheadPctValid ? aheadPctNum / 100 : 0;
 
-  // Auto-scroll toggle (effective only if % is valid)
   const [auto, setAuto] = React.useState(false);
   const autoEnabled = auto && aheadPctValid;
 
-  // Settings modal (Lead % only)
   const [showConfig, setShowConfig] = React.useState(false);
   const inputRef = React.useRef<TextInput>(null);
 
-  // list/bookkeeping for scroll mapping
   const listRef = React.useRef<FlatList<string>>(null);
   const contentH = React.useRef(0);
   const viewportH = React.useRef(0);
   const isUserDragging = React.useRef(false);
 
-  // Track position
   const prog = useProgress();
   const duration = song?.duration || prog.duration || 0;
 
@@ -75,7 +72,7 @@ export default function LyricsPanel({ songId }: { songId: string }) {
     setShowConfig(false);
   }, [song?.id]);
 
-  // Initial fetch
+  // Initial fetch - UNCHANGED
   React.useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -107,7 +104,7 @@ export default function LyricsPanel({ songId }: { songId: string }) {
     };
   }, [song?.id]);
 
-  // Cycle source
+  // Cycle source - UNCHANGED
   const changeLyrics = React.useCallback(async () => {
     if (!song?.title) return;
     const next = (idx + 1) % 7;
@@ -128,7 +125,7 @@ export default function LyricsPanel({ songId }: { songId: string }) {
     }
   }, [song?.id, song?.title, idx]);
 
-  // Auto-scroll driver
+  // Auto-scroll driver - UNCHANGED
   React.useEffect(() => {
     if (!autoEnabled) return;
     if (!duration || !lyrics?.length) return;
@@ -147,7 +144,7 @@ export default function LyricsPanel({ songId }: { songId: string }) {
 
   const onScrollBeginDrag = () => {
     isUserDragging.current = true;
-    setAuto(false); // manual scroll disables auto immediately
+    setAuto(false);
   };
   const onScrollEndDrag = (_e: NativeSyntheticEvent<NativeScrollEvent>) => {
     isUserDragging.current = false;
@@ -162,12 +159,10 @@ export default function LyricsPanel({ songId }: { songId: string }) {
       });
       return;
     }
-    const next = !auto;
-    setAuto(next);
+    setAuto(!auto);
   };
 
   const confirmLeadAndClose = () => {
-    // Validate & close
     if (!aheadPctValid) {
       Toast.show({
         type: 'info',
@@ -182,7 +177,7 @@ export default function LyricsPanel({ songId }: { songId: string }) {
 
   return (
     <View style={styles.wrap}>
-      {/* Header: title + settings gear */}
+      {/* Header */}
       <View style={styles.headerRow}>
         <Text numberOfLines={1} style={styles.title}>
           {song.title}
@@ -190,16 +185,17 @@ export default function LyricsPanel({ songId }: { songId: string }) {
         <TouchableOpacity
           onPress={() => setShowConfig(true)}
           accessibilityLabel="Lyrics settings"
-          style={styles.iconBtn}>
-          <Ionicons name="settings-outline" size={18} color="#cbd5e1" />
+          style={styles.iconBtn}
+          activeOpacity={pressOpacity.default}>
+          <Ionicons name="settings-outline" size={18} color={tokens.colors.text.tertiary} />
         </TouchableOpacity>
       </View>
 
-      {/* Controls row: Auto (left) | Change lyrics (right) */}
+      {/* Controls */}
       <View style={styles.topControlsRow}>
         <TouchableOpacity
           onPress={toggleAuto}
-          activeOpacity={0.85}
+          activeOpacity={pressOpacity.default}
           style={[styles.toggleBtn, autoEnabled ? styles.toggleBtnOn : null]}>
           <Text style={[styles.toggleText, autoEnabled ? styles.toggleTextOn : null]}>
             {autoEnabled ? 'Auto (lead) ON' : 'Auto OFF'}
@@ -209,7 +205,8 @@ export default function LyricsPanel({ songId }: { songId: string }) {
         <TouchableOpacity
           onPress={changeLyrics}
           disabled={loading}
-          style={[styles.changeBtn, loading && { opacity: 0.6 }]}>
+          style={[styles.changeBtn, loading && { opacity: 0.6 }]}
+          activeOpacity={pressOpacity.default}>
           <Text style={styles.changeText}>{loading ? 'Loading…' : 'Change lyrics'}</Text>
         </TouchableOpacity>
       </View>
@@ -218,10 +215,16 @@ export default function LyricsPanel({ songId }: { songId: string }) {
       {lyrics && lyrics.length ? (
         <FlatList
           ref={listRef}
-          contentContainerStyle={{ paddingBottom: 8 }}
+          contentContainerStyle={{ paddingBottom: tokens.spacing.sm }}
           data={lyrics}
           keyExtractor={(_, i) => `${song.id}-${i}`}
-          renderItem={({ item }) => <Text style={styles.line}>{item || ' '}</Text>}
+          renderItem={({ item, index }) => (
+            <Animated.Text
+              entering={FadeInDown.delay(index * 15).duration(timing.fast)}
+              style={styles.line}>
+              {item || ' '}
+            </Animated.Text>
+          )}
           onContentSizeChange={(_w, h) => (contentH.current = h)}
           onLayout={(e) => (viewportH.current = e.nativeEvent.layout.height)}
           onScrollBeginDrag={onScrollBeginDrag}
@@ -229,27 +232,33 @@ export default function LyricsPanel({ songId }: { songId: string }) {
           scrollEventThrottle={16}
         />
       ) : (
-        <View style={styles.center}>
+        <Animated.View entering={FadeIn.duration(timing.normal)} style={styles.center}>
           {loading ? (
-            <ActivityIndicator color="#93c5fd" />
+            <>
+              <ActivityIndicator color={tokens.colors.accent.secondary} />
+              <Text style={styles.loadingText}>Fetching lyrics...</Text>
+            </>
           ) : (
-            <Text style={{ color: '#94a3b8' }}>No lyrics</Text>
+            <Text style={styles.placeholderText}>No lyrics</Text>
           )}
-        </View>
+        </Animated.View>
       )}
 
-      {/* Settings modal — Lead % only + OK */}
+      {/* Settings modal */}
       <Modal
         visible={showConfig}
         transparent
         animationType="fade"
         onRequestClose={() => setShowConfig(false)}>
         <View style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
+          <Animated.View entering={FadeInDown.duration(timing.normal)} style={styles.modalCard}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Lyrics settings</Text>
-              <TouchableOpacity onPress={() => setShowConfig(false)} style={styles.iconBtn}>
-                <Ionicons name="close" size={18} color="#cbd5e1" />
+              <TouchableOpacity
+                onPress={() => setShowConfig(false)}
+                style={styles.iconBtn}
+                activeOpacity={pressOpacity.default}>
+                <Ionicons name="close" size={18} color={tokens.colors.text.tertiary} />
               </TouchableOpacity>
             </View>
 
@@ -264,7 +273,7 @@ export default function LyricsPanel({ songId }: { songId: string }) {
                     setAheadPctStr(cleaned);
                   }}
                   placeholder="4"
-                  placeholderTextColor="#6b7280"
+                  placeholderTextColor={tokens.colors.text.muted}
                   keyboardType="decimal-pad"
                   returnKeyType="done"
                   style={[
@@ -277,17 +286,19 @@ export default function LyricsPanel({ songId }: { songId: string }) {
               <View style={styles.modalActions}>
                 <TouchableOpacity
                   onPress={() => setShowConfig(false)}
-                  style={[styles.btn, styles.btnGhost]}>
+                  style={[styles.btn, styles.btnGhost]}
+                  activeOpacity={pressOpacity.default}>
                   <Text style={styles.btnGhostText}>Cancel</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   onPress={confirmLeadAndClose}
-                  style={[styles.btn, styles.btnPrimary]}>
+                  style={[styles.btn, styles.btnPrimary]}
+                  activeOpacity={pressOpacity.default}>
                   <Text style={styles.btnText}>OK</Text>
                 </TouchableOpacity>
               </View>
             </View>
-          </View>
+          </Animated.View>
         </View>
       </Modal>
     </View>
@@ -298,137 +309,190 @@ const styles = StyleSheet.create({
   wrap: {
     flex: 1,
     minHeight: 220,
-    borderRadius: 16,
+    borderRadius: tokens.radius.xxl,
     borderWidth: 1,
-    borderColor: '#273144',
-    backgroundColor: '#0f141c',
-    padding: 12,
+    borderColor: tokens.colors.border.strong,
+    backgroundColor: tokens.colors.bg.tertiary,
+    padding: tokens.spacing.md,
   },
 
   headerRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    gap: 8,
-    marginBottom: 8,
+    gap: tokens.spacing.sm,
+    marginBottom: tokens.spacing.sm,
   },
   iconBtn: {
     width: 32,
     height: 32,
-    borderRadius: 8,
+    borderRadius: tokens.radius.sm,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#10141c',
+    backgroundColor: tokens.colors.bg.tertiary,
     borderWidth: 1,
-    borderColor: '#273144',
+    borderColor: tokens.colors.border.strong,
   },
 
-  title: { color: '#e5e7eb', fontWeight: '700', fontSize: 16 },
+  title: {
+    color: tokens.colors.text.primary,
+    fontWeight: tokens.fontWeight.bold,
+    fontSize: tokens.fontSize.lg,
+  },
 
-  // Auto (left) | Change Lyrics (right)
   topControlsRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 10,
+    marginBottom: tokens.spacing.md,
   },
 
   toggleBtn: {
-    borderRadius: 999,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    backgroundColor: '#0f141c',
+    borderRadius: tokens.radius.full,
+    paddingHorizontal: tokens.spacing.md,
+    paddingVertical: tokens.spacing.md,
+    backgroundColor: tokens.colors.bg.tertiary,
     borderWidth: 1,
-    borderColor: '#334155',
+    borderColor: tokens.colors.border.focus,
     alignSelf: 'flex-start',
   },
-  toggleBtnOn: { backgroundColor: '#1e293b', borderColor: '#475569' },
-  toggleText: { color: '#a7b1c2', fontWeight: '700' },
-  toggleTextOn: { color: '#e5e7eb' },
+  toggleBtnOn: {
+    backgroundColor: tokens.colors.bg.secondary,
+    borderColor: tokens.colors.border.strong,
+  },
+  toggleText: {
+    color: tokens.colors.text.tertiary,
+    fontWeight: tokens.fontWeight.bold,
+    fontSize: tokens.fontSize.sm,
+  },
+  toggleTextOn: { color: tokens.colors.text.primary },
 
   changeBtn: {
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    backgroundColor: '#111827',
+    borderRadius: tokens.radius.md,
+    paddingHorizontal: tokens.spacing.md,
+    paddingVertical: tokens.spacing.md,
+    backgroundColor: tokens.colors.bg.secondary,
     borderWidth: 1,
-    borderColor: '#334155',
+    borderColor: tokens.colors.border.focus,
   },
-  changeText: { color: '#93c5fd', fontWeight: '700' },
+  changeText: {
+    color: tokens.colors.accent.secondary,
+    fontWeight: tokens.fontWeight.bold,
+    fontSize: tokens.fontSize.sm,
+  },
 
-  line: { color: '#cbd5e1', fontSize: 16, lineHeight: 24, marginBottom: 2 },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  line: {
+    color: tokens.colors.text.tertiary,
+    fontSize: tokens.fontSize.lg,
+    lineHeight: 24,
+    marginBottom: 2,
+  },
+  center: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: tokens.spacing.md,
+  },
+  loadingText: {
+    color: tokens.colors.accent.secondary,
+    fontSize: tokens.fontSize.base,
+  },
+  placeholderText: {
+    color: tokens.colors.text.muted,
+    fontSize: tokens.fontSize.base,
+  },
 
   // Modal
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.45)',
+    backgroundColor: tokens.colors.overlay,
     justifyContent: 'center',
-    padding: 16,
+    padding: tokens.spacing.lg,
   },
   modalCard: {
-    backgroundColor: '#0b1118',
-    borderRadius: 16,
-    padding: 12,
+    backgroundColor: tokens.colors.bg.primary,
+    borderRadius: tokens.radius.xxl,
+    padding: tokens.spacing.md,
     borderWidth: 1,
-    borderColor: '#273144',
+    borderColor: tokens.colors.border.strong,
+    ...tokens.shadow.lg,
   },
   modalHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 8,
+    marginBottom: tokens.spacing.sm,
   },
-  modalTitle: { color: '#e5e7eb', fontSize: 16, fontWeight: '700' },
+  modalTitle: {
+    color: tokens.colors.text.primary,
+    fontSize: tokens.fontSize.lg,
+    fontWeight: tokens.fontWeight.bold,
+  },
 
   controlsCard: {
     borderWidth: 1,
-    borderColor: '#273144',
-    backgroundColor: '#0f141c',
-    borderRadius: 12,
-    padding: 10,
-    gap: 12,
+    borderColor: tokens.colors.border.strong,
+    backgroundColor: tokens.colors.bg.tertiary,
+    borderRadius: tokens.radius.lg,
+    padding: tokens.spacing.md,
+    gap: tokens.spacing.md,
   },
 
   kGroup: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    borderRadius: 10,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    backgroundColor: '#0f141c',
+    gap: tokens.spacing.sm,
+    borderRadius: tokens.radius.md,
+    paddingHorizontal: tokens.spacing.md,
+    paddingVertical: tokens.spacing.sm,
+    backgroundColor: tokens.colors.bg.tertiary,
     borderWidth: 1,
-    borderColor: '#334155',
+    borderColor: tokens.colors.border.focus,
   },
-  kLabel: { color: '#9aa0a6', fontSize: 12, fontWeight: '600' },
+  kLabel: {
+    color: tokens.colors.text.secondary,
+    fontSize: tokens.fontSize.sm,
+    fontWeight: tokens.fontWeight.medium,
+  },
   kInput: {
     flex: 1,
-    color: '#e8eaed',
+    color: tokens.colors.text.primary,
     paddingVertical: 6,
-    paddingHorizontal: 10,
-    borderRadius: 8,
+    paddingHorizontal: tokens.spacing.md,
+    borderRadius: tokens.radius.sm,
     borderWidth: 1,
-    borderColor: '#334155',
-    backgroundColor: '#111827',
+    borderColor: tokens.colors.border.focus,
+    backgroundColor: tokens.colors.bg.secondary,
     fontVariant: ['tabular-nums'],
+    fontSize: tokens.fontSize.base,
   },
-  kInputError: { borderColor: '#ef4444' },
+  kInputError: { borderColor: tokens.colors.error },
 
   modalActions: {
     flexDirection: 'row',
     justifyContent: 'flex-end',
-    gap: 10,
+    gap: tokens.spacing.md,
   },
   btn: {
-    borderRadius: 10,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
+    borderRadius: tokens.radius.md,
+    paddingHorizontal: tokens.spacing.lg,
+    paddingVertical: tokens.spacing.md,
     minWidth: 90,
     alignItems: 'center',
   },
-  btnPrimary: { backgroundColor: '#4f46e5' },
-  btnGhost: { borderWidth: 1, borderColor: '#39414f' },
-  btnText: { color: '#fff', fontWeight: '600' },
-  btnGhostText: { color: '#aab2c0', fontWeight: '600' },
+  btnPrimary: { backgroundColor: tokens.colors.accent.button },
+  btnGhost: {
+    borderWidth: 1,
+    borderColor: tokens.colors.border.focus,
+  },
+  btnText: {
+    color: '#fff',
+    fontWeight: tokens.fontWeight.medium,
+    fontSize: tokens.fontSize.base,
+  },
+  btnGhostText: {
+    color: tokens.colors.text.tertiary,
+    fontWeight: tokens.fontWeight.medium,
+    fontSize: tokens.fontSize.base,
+  },
 });

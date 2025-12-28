@@ -4,6 +4,7 @@ import React, { useCallback, useMemo } from 'react';
 import { View, Text, Image, StyleSheet, TouchableOpacity, ViewStyle } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import Slider from '@react-native-community/slider';
+import Animated, { FadeInDown, FadeOutDown } from 'react-native-reanimated';
 
 import {
   useMusic,
@@ -13,6 +14,8 @@ import {
   playNext,
   playPrev,
 } from '@/lib/music-player-all-controls';
+import { tokens, pressOpacity } from '@/lib/tokens';
+import { triggerHaptic } from '@/lib/haptics';
 
 const defaultArtwork = require('../assets/unknown_artist.png');
 
@@ -38,27 +41,40 @@ export default function MiniPlayer({ style }: { style?: ViewStyle }) {
 
   const hidden = !song || !!showFull;
 
-  // Professional mini player controls with loading protection
   const handleToggle = useCallback(async () => {
-    if (isLoading) return; // Prevent rapid clicking
+    if (isLoading) return;
+    await triggerHaptic('medium');
     await togglePlayPause();
   }, [isLoading]);
 
   const handleSkipBack = useCallback(async () => {
     if (isLoading) return;
+    await triggerHaptic('light');
     await playPrev();
   }, [isLoading]);
 
   const handleSkipForward = useCallback(async () => {
     if (isLoading) return;
+    await triggerHaptic('light');
     await playNext();
   }, [isLoading]);
 
+  const handleOpenFull = useCallback(async () => {
+    await triggerHaptic('light');
+    setShowFull(true);
+  }, [setShowFull]);
+
+  if (hidden) return null;
+
   return (
-    <View
-      pointerEvents={hidden ? 'none' : 'auto'}
-      style={[styles.shell, style, hidden && styles.hidden]}>
-      <TouchableOpacity style={styles.left} onPress={() => setShowFull(true)} activeOpacity={0.9}>
+    <Animated.View
+      entering={FadeInDown.duration(300)}
+      exiting={FadeOutDown.duration(200)}
+      style={[styles.shell, style]}>
+      <TouchableOpacity
+        style={styles.left}
+        onPress={handleOpenFull}
+        activeOpacity={pressOpacity.light}>
         <Image source={song?.artwork ? { uri: song.artwork } : defaultArtwork} style={styles.art} />
         <View style={{ flex: 1, paddingRight: 96 }}>
           <Text style={styles.title} numberOfLines={1}>
@@ -74,26 +90,29 @@ export default function MiniPlayer({ style }: { style?: ViewStyle }) {
         <TouchableOpacity
           onPress={handleSkipBack}
           style={[styles.iconBtn, isLoading && styles.disabled]}
-          disabled={isLoading}>
-          <Ionicons name="play-skip-back" size={20} color="#e2e8f0" />
+          disabled={isLoading}
+          activeOpacity={pressOpacity.default}>
+          <Ionicons name="play-skip-back" size={20} color={tokens.colors.text.primary} />
         </TouchableOpacity>
 
         <TouchableOpacity
           onPress={handleToggle}
           style={[styles.iconBtn, styles.play, isLoading && styles.loadingPlay]}
-          disabled={isLoading}>
+          disabled={isLoading}
+          activeOpacity={pressOpacity.default}>
           <Ionicons
             name={isPlaying ? 'pause' : 'play'}
             size={20}
-            color={isLoading ? '#6b7280' : '#0b0f17'}
+            color={isLoading ? tokens.colors.text.muted : tokens.colors.text.inverse}
           />
         </TouchableOpacity>
 
         <TouchableOpacity
           onPress={handleSkipForward}
           style={[styles.iconBtn, isLoading && styles.disabled]}
-          disabled={isLoading}>
-          <Ionicons name="play-skip-forward" size={20} color="#e2e8f0" />
+          disabled={isLoading}
+          activeOpacity={pressOpacity.default}>
+          <Ionicons name="play-skip-forward" size={20} color={tokens.colors.text.primary} />
         </TouchableOpacity>
       </View>
 
@@ -104,55 +123,80 @@ export default function MiniPlayer({ style }: { style?: ViewStyle }) {
           minimumValue={0}
           maximumValue={duration}
           value={position}
-          minimumTrackTintColor="#60A5FA"
-          maximumTrackTintColor="#1E293B"
-          thumbTintColor="#60A5FA"
+          minimumTrackTintColor={tokens.colors.accent.primary}
+          maximumTrackTintColor={tokens.colors.bg.secondary}
+          thumbTintColor={tokens.colors.accent.primary}
         />
         <Text style={styles.time}>{fmt(duration)}</Text>
       </View>
-    </View>
+    </Animated.View>
   );
 }
 
 const styles = StyleSheet.create({
   shell: {
-    marginHorizontal: 12,
-    backgroundColor: '#0f141c',
-    borderRadius: 16,
+    marginHorizontal: tokens.spacing.md,
+    backgroundColor: tokens.colors.bg.elevated,
+    borderRadius: tokens.radius.xxl,
     borderWidth: 1,
-    borderColor: '#273144',
-    padding: 10,
+    borderColor: tokens.colors.border.default,
+    padding: tokens.spacing.md,
+    ...tokens.shadow.player,
   },
-  hidden: { display: 'none' },
-  left: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  art: { width: 42, height: 42, borderRadius: 8, backgroundColor: '#11151c' },
-  title: { color: '#e5e7eb', fontWeight: '700' },
-  artist: { color: '#9aa0a6', fontSize: 12 },
+  left: { flexDirection: 'row', alignItems: 'center', gap: tokens.spacing.md },
+  art: {
+    width: 42,
+    height: 42,
+    borderRadius: tokens.radius.sm,
+    backgroundColor: tokens.colors.bg.tertiary,
+  },
+  title: {
+    color: tokens.colors.text.primary,
+    fontWeight: tokens.fontWeight.bold,
+    fontSize: tokens.fontSize.md,
+  },
+  artist: {
+    color: tokens.colors.text.secondary,
+    fontSize: tokens.fontSize.sm,
+    marginTop: 2,
+  },
   right: {
     position: 'absolute',
-    right: 10,
-    top: 10,
+    right: tokens.spacing.md,
+    top: tokens.spacing.md,
     flexDirection: 'row',
-    gap: 8,
+    gap: tokens.spacing.sm,
   },
   iconBtn: {
     width: 34,
     height: 34,
-    borderRadius: 999,
+    borderRadius: tokens.radius.full,
     borderWidth: 1,
-    borderColor: '#273144',
-    backgroundColor: '#10141c',
+    borderColor: tokens.colors.border.default,
+    backgroundColor: tokens.colors.bg.tertiary,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  play: { backgroundColor: '#93c5fd', borderColor: '#93c5fd' },
-  disabled: { opacity: 0.5 },
-  loadingPlay: { backgroundColor: '#64748b', borderColor: '#64748b' },
+  play: {
+    backgroundColor: tokens.colors.accent.primary,
+    borderColor: tokens.colors.accent.primary,
+  },
+  disabled: { opacity: tokens.opacity.disabled },
+  loadingPlay: {
+    backgroundColor: tokens.colors.disabled,
+    borderColor: tokens.colors.disabled,
+  },
   sliderRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: tokens.spacing.sm,
     marginTop: 6,
   },
-  time: { color: '#8ea0b5', fontSize: 11, width: 44, textAlign: 'right' },
+  time: {
+    color: tokens.colors.text.tertiary,
+    fontSize: tokens.fontSize.xs,
+    width: 44,
+    textAlign: 'right',
+    fontVariant: ['tabular-nums'],
+  },
 });
