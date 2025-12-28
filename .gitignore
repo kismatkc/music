@@ -20,6 +20,8 @@ web-build/
 *.p12
 *.key
 *.mobileprovision
+.env.development
+.env.production
 
 # Metro
 .metro-health-check*
